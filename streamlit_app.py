@@ -147,7 +147,7 @@ def predict_to_image(pred_image: torch.Tensor):
     Returns:
         np.ndarray: The processed image as a NumPy array with dtype uint8 and shape (W, H, C).
     """
-    return (pred_image.permute(2, 1, 0).numpy().clip(0.0, 1.0) * 255).astype(
+    return (pred_image.permute(1, 2, 0).numpy().clip(0.0, 1.0) * 255).astype(
         np.uint8
     )
 
@@ -177,6 +177,7 @@ def disp_result_images(predictions, threshold) -> None:
     with result_images_placeholder.container(height=300):
         st.header("検査結果")
         st.info(f"しきい値: {threshold:.5f}")
+
         # Create a grid of images
         cols = st.columns(3)
 
@@ -205,8 +206,17 @@ def disp_result_images(predictions, threshold) -> None:
                     np_image = predict_to_image(image)
                 else:
                     continue
+
+                pil_image = Image.fromarray(np_image)
+                wh_ratio = st.session_state["test_wh_ratios"][i]
+                resized_image = pil_image.resize(
+                    (pil_image.width, int(pil_image.width / wh_ratio))
+                )
                 with tile_0:
-                    st.image(np_image, use_container_width=True)
+                    st.image(resized_image, use_container_width=True)
+
+                image_path = Path(prediction.image_path[0]).name
+                image_path = re.sub(r"test_\d+\.", "", image_path)
 
                 tile_1 = cols[1].container(height=200, border=False)
                 anomaly_map = get_item(prediction, "anomaly_map")
@@ -218,16 +228,17 @@ def disp_result_images(predictions, threshold) -> None:
                         map_min=map_min,
                         map_ptp=map_ptp,
                     )
+                    pil_heat_map = Image.fromarray(heat_map)
+                    resized_heat_map = pil_heat_map.resize(
+                        (pil_heat_map.width, int(pil_heat_map.width / wh_ratio))
+                    )
                     with tile_1:
-                        st.image(heat_map, use_container_width=True)
+                        st.image(resized_heat_map, use_container_width=True)
 
                     # zipに書き込み
-                    # ndarray → PIL画像
-                    img = Image.fromarray(heat_map)
-
                     # メモリ上に画像を保存
                     img_bytes = io.BytesIO()
-                    img.save(
+                    resized_heat_map.save(
                         img_bytes,
                         format="JPEG",
                     )
@@ -235,13 +246,11 @@ def disp_result_images(predictions, threshold) -> None:
 
                     # ZIPに画像を書き込み
                     zipf.writestr(
-                        Path(prediction.image_path[0]).stem + ".jpeg",
+                        "result_" + Path(image_path).stem + ".jpg",
                         img_bytes.read(),
                     )
 
                 tile_2 = cols[2].container(height=200, border=False)
-                image_path = Path(prediction.image_path[0]).name
-                image_path = re.sub(r"test_\d+\.", "", image_path)
                 tile_2.write(f"{image_path}")
                 pred_score = get_item(prediction, "pred_score")
                 pred_score = pred_score if pred_score is not None else 0.0
@@ -297,9 +306,16 @@ def save_images(train_images, test_images):
     # 3. Save test_images to DATASET_PATH/test
     test_dir = dataset_path / "test"
     test_dir.mkdir(parents=True, exist_ok=True)
+    # 画像縦横比
+    st.session_state.test_wh_ratios = []
     for i, image in enumerate(test_images):
         with open(test_dir / f"test_{i}.{image.name}", "wb") as f:
             f.write(image.getvalue())
+
+        pil_image = Image.open(image)
+        arr = np.array(pil_image)
+        h, w = arr.shape[:2]
+        st.session_state.test_wh_ratios.append(w / h)
 
 
 def get_item(prediction, key):
