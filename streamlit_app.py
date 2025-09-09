@@ -258,7 +258,9 @@ def disp_result_images(predictions, threshold) -> None:
 
             # CSVをZIPに追加
             csv_buffer.seek(0)
-            zipf.writestr("result.csv", csv_buffer.getvalue().encode("utf-8"))
+            zipf.writestr(
+                "result.csv", csv_buffer.getvalue().encode("utf-8-sig")
+            )
 
         # 保存ボタン
         st.download_button(
