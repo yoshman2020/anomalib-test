@@ -86,7 +86,6 @@ def configure_sidebar() -> bool:
                 "しきい値",
                 format="%0.5f",
                 key="threshold",
-                disabled=threshold_auto,
             )
 
             image_size = st.number_input(
