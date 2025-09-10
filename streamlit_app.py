@@ -1,6 +1,5 @@
 import csv
 import io
-import re
 import shutil
 import zipfile
 from pathlib import Path
@@ -46,25 +45,29 @@ def configure_sidebar() -> bool:
     """
     with st.sidebar:
         st.markdown("# 異常検知")
-        with st.form("form"):
-            st.markdown("## :level_slider: 検査条件")
+        st.markdown("## :level_slider: 検査条件")
 
-            train_images = st.file_uploader(
-                "学習画像",
-                type=["png", "jpg", "jpeg", "bmp"],
-                accept_multiple_files=True,
-                key="train_images",
-                help="学習に使用する正常画像を選択してください。",
-            )
+        train_images = st.file_uploader(
+            "学習画像",
+            type=["png", "jpg", "jpeg", "bmp"],
+            accept_multiple_files=True,
+            key="train_images",
+            help="学習に使用する正常画像を選択してください。",
+        )
 
-            test_images = st.file_uploader(
-                "検査画像",
-                type=["png", "jpg", "jpeg", "bmp"],
-                accept_multiple_files=True,
-                key="test_images",
-                help="検査する画像を選択してください。",
-            )
+        test_images = st.file_uploader(
+            "検査画像",
+            type=["png", "jpg", "jpeg", "bmp"],
+            accept_multiple_files=True,
+            key="test_images",
+            help="検査する画像を選択してください。",
+        )
 
+        col_model_name_1, col_model_name_2 = st.columns(
+            [9, 1], vertical_alignment="bottom"
+        )
+
+        with col_model_name_1:
             model_name = st.selectbox(
                 "検査手法",
                 options=constants.MODEL_NAMES,
@@ -72,6 +75,19 @@ def configure_sidebar() -> bool:
                 key="model_name",
             )
 
+        @st.dialog("検査手法について", width="large")
+        def about_model_name():
+            df = pd.DataFrame(constants.ABOUT_MODEL_NAMES)
+            st.table(df)
+
+        with col_model_name_2:
+            if st.button("?", key="button_about_model_name"):
+                about_model_name()
+
+        col_backbone_1, col_backbone_2 = st.columns(
+            [9, 1], vertical_alignment="bottom"
+        )
+        with col_backbone_1:
             backbone = st.selectbox(
                 "モデル",
                 options=constants.MODEL_BACKBONES[model_name],
@@ -79,43 +95,30 @@ def configure_sidebar() -> bool:
                 key="backbone",
             )
 
-            threshold_auto = st.checkbox(
-                "自動しきい値", key="threshold_auto", value=True
-            )
-            threshold = st.number_input(
-                "しきい値",
-                format="%0.5f",
-                key="threshold",
-            )
-
-            image_size = st.number_input(
-                "縮小サイズ", value=128, min_value=2, key="image_size"
-            )
-            epochs = st.number_input(
-                "学習回数", value=1, min_value=1, key="epochs"
-            )
-
-            submitted = st.form_submit_button(
-                "検査開始",
-                type="primary",
-                use_container_width=True,
-            )
-
-        @st.dialog("検査手法について", width="large")
-        def about_model_name():
-            df = pd.DataFrame(constants.ABOUT_MODEL_NAMES)
-            st.table(df)
-
-        if st.button("検査手法について"):
-            about_model_name()
-
         @st.dialog("モデルについて", width="large")
         def about_backbone():
             df = pd.DataFrame(constants.ABOUT_BACKBONE)
             st.table(df)
 
-        if st.button("モデルについて"):
-            about_backbone()
+        with col_backbone_2:
+            if st.button("?", key="button_about_backbone"):
+                about_backbone()
+
+        threshold_auto = st.checkbox(
+            "自動しきい値", key="threshold_auto", value=True
+        )
+        threshold = st.number_input(
+            "しきい値", format="%0.5f", key="threshold", disabled=threshold_auto
+        )
+
+        image_size = st.number_input(
+            "縮小サイズ", value=128, min_value=2, key="image_size"
+        )
+        epochs = st.number_input("学習回数", value=1, min_value=1, key="epochs")
+
+        submitted = st.button(
+            "検査開始", type="primary", width="content", key="submitted"
+        )
 
     return submitted
 
@@ -133,7 +136,9 @@ def disp_train_images(images: list[UploadedFile]) -> None:
             cols = st.columns(3)
             for i, image in enumerate(images):
                 cols[i % 3].image(
-                    image, caption=f"{image.name}", use_container_width=True
+                    image,
+                    caption=f"{image.name}",
+                    width="content",
                 )
 
 
@@ -173,10 +178,18 @@ def disp_result_images(predictions, threshold) -> None:
     """
     if predictions is None:
         return
+
+    st.session_state["test_pil_images"] = []
+    st.session_state["heat_maps"] = []
+    st.session_state["str_results"] = []
+    st.session_state["str_threshold"] = 0.0
+
     map_min, map_max, map_ptp = get_map_min_max(predictions)
     with result_images_placeholder.container(height=300):
         st.header("検査結果")
-        st.info(f"しきい値: {threshold:.5f}")
+        str_threshold = f"しきい値: {threshold:.5f}"
+        st.info(str_threshold)
+        st.session_state["str_threshold"] = str_threshold
 
         # Create a grid of images
         cols = st.columns(3)
@@ -213,10 +226,10 @@ def disp_result_images(predictions, threshold) -> None:
                     (pil_image.width, int(pil_image.width / wh_ratio))
                 )
                 with tile_0:
-                    st.image(resized_image, use_container_width=True)
+                    st.image(resized_image, width="content")
+                st.session_state["test_pil_images"].append(resized_image)
 
                 image_path = Path(prediction.image_path[0]).name
-                image_path = re.sub(r"test_\d+\.", "", image_path)
 
                 tile_1 = cols[1].container(height=200, border=False)
                 anomaly_map = get_item(prediction, "anomaly_map")
@@ -233,7 +246,8 @@ def disp_result_images(predictions, threshold) -> None:
                         (pil_heat_map.width, int(pil_heat_map.width / wh_ratio))
                     )
                     with tile_1:
-                        st.image(resized_heat_map, use_container_width=True)
+                        st.image(resized_heat_map, width="content")
+                    st.session_state["heat_maps"].append(resized_heat_map)
 
                     # zipに書き込み
                     # メモリ上に画像を保存
@@ -261,6 +275,9 @@ def disp_result_images(predictions, threshold) -> None:
                     else:
                         judge = "異常"
                         st.error(f"score:{pred_score:.2f} [異常]")
+                st.session_state["str_results"].append(
+                    f"score:{pred_score:.2f} [{judge}]"
+                )
 
                 # CSVにファイル名を追加
                 csv_writer.writerow([image_path, pred_score, judge])
@@ -272,6 +289,67 @@ def disp_result_images(predictions, threshold) -> None:
             )
 
         # 保存ボタン
+        st.download_button(
+            "結果保存",
+            data=zip_path.read_bytes(),
+            file_name="result.zip",
+            on_click="ignore",
+        )
+
+
+def disp_session_images():
+    """
+    Displays training and test images, heat maps, and inspection results from the Streamlit session state.
+
+    This function performs the following:
+    - Displays training images using `disp_train_images`.
+    - Retrieves test images, heat maps, result strings, and threshold information from the Streamlit session state.
+    - Shows the inspection threshold information.
+    - Arranges test images, their corresponding heat maps, and result messages in a 3-column grid layout.
+    - For each test image:
+        - Displays the original image.
+        - Displays the corresponding heat map.
+        - Shows the inspection result as a success or error message, depending on the result content.
+
+    Assumes the following keys exist in `st.session_state`:
+        - "train_images": List of training images.
+        - "test_pil_images": List of test images (PIL format).
+        - "heat_maps": List of heat map images.
+        - "str_results": List of result strings for each test image.
+        - "str_threshold": String describing the threshold used for inspection.
+
+    Requires a global `result_images_placeholder` for displaying the results section.
+    """
+    disp_train_images(st.session_state["train_images"])
+
+    test_pil_images = st.session_state["test_pil_images"]
+    heat_maps = st.session_state["heat_maps"]
+    str_results = st.session_state["str_results"]
+    str_threshold = st.session_state["str_threshold"]
+
+    with result_images_placeholder.container(height=300):
+        st.header("検査結果")
+        st.info(str_threshold)
+        # Create a grid of images
+        cols = st.columns(3)
+        for image, heat_map, result in zip(
+            test_pil_images, heat_maps, str_results
+        ):
+            tile_0 = cols[0].container(height=200, border=False)
+            with tile_0:
+                st.image(image, width="content")
+            tile_1 = cols[1].container(height=200, border=False)
+            with tile_1:
+                st.image(heat_map, width="content")
+            tile_2 = cols[2].container(height=200, border=False)
+            with tile_2:
+                if "正常" in result:
+                    st.success(result)
+                else:
+                    st.error(result)
+
+        # 保存ボタン
+        zip_path = Path(constants.RESULT_PATH) / "result.zip"
         st.download_button(
             "結果保存",
             data=zip_path.read_bytes(),
@@ -300,7 +378,8 @@ def save_images(train_images, test_images):
     train_dir = dataset_path / "train"
     train_dir.mkdir(parents=True, exist_ok=True)
     for i, image in enumerate(train_images):
-        with open(train_dir / f"train_{i}.{image.name}", "wb") as f:
+        image_name = "_".join(Path(image.name).parts)
+        with open(train_dir / f"{i:04}.{image_name}", "wb") as f:
             f.write(image.getvalue())
 
     # 3. Save test_images to DATASET_PATH/test
@@ -309,7 +388,8 @@ def save_images(train_images, test_images):
     # 画像縦横比
     st.session_state.test_wh_ratios = []
     for i, image in enumerate(test_images):
-        with open(test_dir / f"test_{i}.{image.name}", "wb") as f:
+        image_name = "_".join(Path(image.name).parts)
+        with open(test_dir / f"{i:04}.{image_name}", "wb") as f:
             f.write(image.getvalue())
 
         pil_image = Image.open(image)
@@ -433,13 +513,13 @@ def main_page(submitted: bool) -> None:
                 st.session_state["train_images"] is None
                 or len(st.session_state["train_images"]) == 0
             ):
-                st.error("学習画像を選択してください。")
+                st.error("学習画像を選択してください。", icon="❌")
                 return
             if (
                 st.session_state["test_images"] is None
                 or len(st.session_state["test_images"]) == 0
             ):
-                st.error("検査画像を選択してください。")
+                st.error("検査画像を選択してください。", icon="❌")
                 return
             try:
                 # Load the selected model
@@ -521,9 +601,13 @@ def main_page(submitted: bool) -> None:
                 )
             except Exception as e:
                 print(e)
-                st.error(f"Encountered an error: {e}", icon="🚨")
+                st.error(f"Encountered an error: {e}", icon="❌")
 
-    # If not submitted, chill here 🍹
+    elif "test_pil_images" in st.session_state and 0 < len(
+        st.session_state["test_pil_images"]
+    ):
+        # 処理済み
+        disp_session_images()
     else:
         pass
 
