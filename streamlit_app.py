@@ -1,6 +1,7 @@
 import csv
 import io
 import shutil
+import time
 import zipfile
 from pathlib import Path
 
@@ -510,27 +511,19 @@ def main_page(submitted: bool) -> None:
     """
 
     if submitted == True:
-        with st.status("処理中...", expanded=True) as status:
-
+        start = time.time()
+        with st.spinner("処理中", show_time=True):
             if (
                 st.session_state["train_images"] is None
                 or len(st.session_state["train_images"]) == 0
             ):
-                status.update(
-                    label="学習画像を選択してください。",
-                    state="error",
-                    expanded=False,
-                )
+                st.error("　学習画像を選択してください。", icon="❌")
                 return
             if (
                 st.session_state["test_images"] is None
                 or len(st.session_state["test_images"]) == 0
             ):
-                status.update(
-                    label="検査画像を選択してください。",
-                    state="error",
-                    expanded=False,
-                )
+                st.error("　検査画像を選択してください。", icon="❌")
                 return
             try:
                 # Load the selected model
@@ -605,10 +598,12 @@ def main_page(submitted: bool) -> None:
                 disp_train_images(st.session_state["train_images"])
                 disp_result_images(predictions, threshold=threshold)
 
-                status.update(
-                    label="処理完了",
-                    state="complete",
-                    expanded=False,
+                end = time.time()
+                elapsed_time = end - start
+                minutes = int(elapsed_time // 60)
+                seconds = int(elapsed_time % 60)
+                st.success(
+                    f"　処理完了　({minutes}minute, {seconds}seconds)", icon="✔️"
                 )
             except Exception as e:
                 print(e)
