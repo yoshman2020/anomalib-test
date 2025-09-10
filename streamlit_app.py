@@ -26,6 +26,7 @@ st.set_page_config(
 
 train_images_placeholder = st.empty()
 result_images_placeholder = st.empty()
+download_button_placeholder = st.empty()
 
 
 def configure_sidebar() -> bool:
@@ -138,7 +139,7 @@ def disp_train_images(images: list[UploadedFile]) -> None:
                 cols[i % 3].image(
                     image,
                     caption=f"{image.name}",
-                    width="content",
+                    width="stretch",
                 )
 
 
@@ -226,7 +227,7 @@ def disp_result_images(predictions, threshold) -> None:
                     (pil_image.width, int(pil_image.width / wh_ratio))
                 )
                 with tile_0:
-                    st.image(resized_image, width="content")
+                    st.image(resized_image, width="stretch")
                 st.session_state["test_pil_images"].append(resized_image)
 
                 image_path = Path(prediction.image_path[0]).name
@@ -246,7 +247,7 @@ def disp_result_images(predictions, threshold) -> None:
                         (pil_heat_map.width, int(pil_heat_map.width / wh_ratio))
                     )
                     with tile_1:
-                        st.image(resized_heat_map, width="content")
+                        st.image(resized_heat_map, width="stretch")
                     st.session_state["heat_maps"].append(resized_heat_map)
 
                     # zipに書き込み
@@ -288,6 +289,7 @@ def disp_result_images(predictions, threshold) -> None:
                 "result.csv", csv_buffer.getvalue().encode("utf-8-sig")
             )
 
+    with download_button_placeholder.container():
         # 保存ボタン
         st.download_button(
             "結果保存",
@@ -337,10 +339,10 @@ def disp_session_images():
         ):
             tile_0 = cols[0].container(height=200, border=False)
             with tile_0:
-                st.image(image, width="content")
+                st.image(image, width="stretch")
             tile_1 = cols[1].container(height=200, border=False)
             with tile_1:
-                st.image(heat_map, width="content")
+                st.image(heat_map, width="stretch")
             tile_2 = cols[2].container(height=200, border=False)
             with tile_2:
                 if "正常" in result:
@@ -348,8 +350,9 @@ def disp_session_images():
                 else:
                     st.error(result)
 
-        # 保存ボタン
-        zip_path = Path(constants.RESULT_PATH) / "result.zip"
+    # 保存ボタン
+    zip_path = Path(constants.RESULT_PATH) / "result.zip"
+    with download_button_placeholder.container():
         st.download_button(
             "結果保存",
             data=zip_path.read_bytes(),
@@ -513,13 +516,21 @@ def main_page(submitted: bool) -> None:
                 st.session_state["train_images"] is None
                 or len(st.session_state["train_images"]) == 0
             ):
-                st.error("学習画像を選択してください。", icon="❌")
+                status.update(
+                    label="学習画像を選択してください。",
+                    state="error",
+                    expanded=False,
+                )
                 return
             if (
                 st.session_state["test_images"] is None
                 or len(st.session_state["test_images"]) == 0
             ):
-                st.error("検査画像を選択してください。", icon="❌")
+                status.update(
+                    label="検査画像を選択してください。",
+                    state="error",
+                    expanded=False,
+                )
                 return
             try:
                 # Load the selected model
