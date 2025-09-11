@@ -528,12 +528,14 @@ def main_page(submitted: bool) -> None:
                 or len(st.session_state["train_images"]) == 0
             ):
                 st.error("　学習画像を選択してください。", icon="❌")
+                init_results()
                 return
             if (
                 st.session_state["test_images"] is None
                 or len(st.session_state["test_images"]) == 0
             ):
                 st.error("　検査画像を選択してください。", icon="❌")
+                init_results()
                 return
             if (
                 0
@@ -541,6 +543,7 @@ def main_page(submitted: bool) -> None:
                 and st.session_state["backbone"] is None
             ):
                 st.error("　モデルを選択してください。", icon="❌")
+                init_results()
                 return
             try:
                 # Load the selected model
