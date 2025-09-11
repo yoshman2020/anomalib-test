@@ -528,6 +528,12 @@ def main_page(submitted: bool) -> None:
             ):
                 st.error("　検査画像を選択してください。", icon="❌")
                 return
+            if (
+                0 < len(constants.MODEL_BACKBONES[st.session_state["model_name"]])
+                and st.session_state["backbone"] is None
+            ):
+                st.error("　モデルを選択してください。", icon="❌")
+                return
             try:
                 # Load the selected model
                 model = models.get_model(
