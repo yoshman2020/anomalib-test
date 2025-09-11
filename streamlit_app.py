@@ -461,6 +461,13 @@ def get_map_min_max(predictions) -> tuple[float, float, float]:
             - map_max (float): The maximum value found across all anomaly maps.
             - map_ptp (float): The range (max - min) of the anomaly map values.
     """
+    if (
+        predictions is None
+        or len(predictions) == 0
+        or predictions[0].anomaly_map is None
+        or len(predictions[0].anomaly_map) == 0
+    ):
+        return 0.0, 1.0, 1.0
     map_min = min(
         prediction.anomaly_map[0].min().cpu().numpy()
         for prediction in predictions
@@ -529,7 +536,8 @@ def main_page(submitted: bool) -> None:
                 st.error("　検査画像を選択してください。", icon="❌")
                 return
             if (
-                0 < len(constants.MODEL_BACKBONES[st.session_state["model_name"]])
+                0
+                < len(constants.MODEL_BACKBONES[st.session_state["model_name"]])
                 and st.session_state["backbone"] is None
             ):
                 st.error("　モデルを選択してください。", icon="❌")
