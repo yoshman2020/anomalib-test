@@ -3,6 +3,7 @@ import io
 import shutil
 import time
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -193,6 +194,8 @@ def disp_result_images(predictions, threshold) -> None:
         # CSV用のメモリバッファを用意
         csv_buffer = io.StringIO()
         csv_writer = csv.writer(csv_buffer)
+        now = datetime.now()
+        csv_writer.writerow([f"{now:%Y/%m/%d %H:%M:%S}"])
         csv_writer.writerow(
             [
                 "検査手法",
@@ -603,12 +606,19 @@ def main_page(submitted: bool) -> None:
                 minutes = int(elapsed_time // 60)
                 seconds = elapsed_time % 60
                 st.success(
-                    f"　処理完了　({minutes}minutes, {seconds:.1f}seconds)",
+                    f"　処理完了　({minutes} minutes, {seconds:.1f} seconds)",
                     icon="✔️",
                 )
             except Exception as e:
                 print(e)
-                st.error(f"Encountered an error: {e}", icon="❌")
+                end = time.time()
+                elapsed_time = end - start
+                minutes = int(elapsed_time // 60)
+                seconds = elapsed_time % 60
+                st.error(
+                    f"Encountered an error: {e}\n({minutes} minutes, {seconds:.1f} seconds)",
+                    icon="❌",
+                )
                 init_results()
 
     elif "test_pil_images" in st.session_state and 0 < len(

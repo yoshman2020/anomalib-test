@@ -53,7 +53,7 @@ def get_model(
         ValueError: If an unknown model name is provided.
     """
 
-    if backbone in ["", "mcait"]:
+    if backbone is None or backbone in ["", "mcait"]:
         layers = []
     else:
         feature_model = timm.create_model(backbone, features_only=True)
