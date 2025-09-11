@@ -609,6 +609,7 @@ def main_page(submitted: bool) -> None:
                     f"　処理完了　({minutes} minutes, {seconds:.1f} seconds)",
                     icon="✔️",
                 )
+                print(f"elapsed_time: {elapsed_time}")
             except Exception as e:
                 print(e)
                 end = time.time()

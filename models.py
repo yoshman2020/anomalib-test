@@ -31,6 +31,8 @@ from anomalib.models.image.vlm_ad.utils import ModelName
 from anomalib.pre_processing import PreProcessor
 from torchvision.transforms.v2 import Compose, Resize
 
+import constants
+
 
 def get_model(
     model_name: str,
@@ -82,9 +84,9 @@ def get_model(
         model = Cflow(
             backbone=backbone,
             pre_processor=pre_processor,
-            layers=layers,
+            layers=layers[-3:],
+            fiber_batch_size=constants.BATCH_SIZE,
             pre_trained=True,
-            fiber_batch_size=64,
             decoder="freia-cflow",
             condition_vector=128,
             coupling_blocks=8,
