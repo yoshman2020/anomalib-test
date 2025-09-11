@@ -183,6 +183,7 @@ def disp_result_images(predictions, threshold) -> None:
 
     st.session_state["test_pil_images"] = []
     st.session_state["heat_maps"] = []
+    st.session_state["test_image_path"] = []
     st.session_state["str_results"] = []
     st.session_state["str_threshold"] = 0.0
 
@@ -192,9 +193,6 @@ def disp_result_images(predictions, threshold) -> None:
         str_threshold = f"しきい値: {threshold:.5f}"
         st.info(str_threshold)
         st.session_state["str_threshold"] = str_threshold
-
-        # Create a grid of images
-        cols = st.columns(3)
 
         # CSV用のメモリバッファを用意
         csv_buffer = io.StringIO()
@@ -215,7 +213,7 @@ def disp_result_images(predictions, threshold) -> None:
         zip_path = Path(constants.RESULT_PATH) / "result.zip"
         with zipfile.ZipFile(zip_path, "w") as zipf:
             for i, prediction in enumerate(predictions):
-                tile_0 = cols[0].container(height=200, border=False)
+                cols = st.columns(3)
                 image = get_item(prediction, "image")
                 if isinstance(image, torch.Tensor):
                     np_image = predict_to_image(image)
@@ -227,13 +225,11 @@ def disp_result_images(predictions, threshold) -> None:
                 resized_image = pil_image.resize(
                     (pil_image.width, int(pil_image.width / wh_ratio))
                 )
-                with tile_0:
-                    st.image(resized_image, width="stretch")
+                cols[0].image(resized_image, caption="", width="stretch")
                 st.session_state["test_pil_images"].append(resized_image)
 
                 image_path = Path(prediction.image_path[0]).name
 
-                tile_1 = cols[1].container(height=200, border=False)
                 anomaly_map = get_item(prediction, "anomaly_map")
                 if anomaly_map is not None:
                     anomaly_map = anomaly_map.cpu().numpy().squeeze()  # type: ignore
@@ -247,8 +243,7 @@ def disp_result_images(predictions, threshold) -> None:
                     resized_heat_map = pil_heat_map.resize(
                         (pil_heat_map.width, int(pil_heat_map.width / wh_ratio))
                     )
-                    with tile_1:
-                        st.image(resized_heat_map, width="stretch")
+                    cols[1].image(resized_heat_map, caption="", width="stretch")
                     st.session_state["heat_maps"].append(resized_heat_map)
 
                     # zipに書き込み
@@ -266,11 +261,11 @@ def disp_result_images(predictions, threshold) -> None:
                         img_bytes.read(),
                     )
 
-                tile_2 = cols[2].container(height=200, border=False)
-                tile_2.write(f"{image_path}")
+                cols[2].write(image_path)
+                st.session_state["test_image_path"].append(image_path)
                 pred_score = get_item(prediction, "pred_score")
                 pred_score = pred_score if pred_score is not None else 0.0
-                with tile_2:
+                with cols[2]:
                     if pred_score <= threshold:
                         judge = "正常"
                         st.success(f"score:{pred_score:.2f} [正常]")
@@ -318,6 +313,7 @@ def disp_session_images():
         - "train_images": List of training images.
         - "test_pil_images": List of test images (PIL format).
         - "heat_maps": List of heat map images.
+        - "test_image_path": List of test image paths.
         - "str_results": List of result strings for each test image.
         - "str_threshold": String describing the threshold used for inspection.
 
@@ -327,6 +323,7 @@ def disp_session_images():
 
     test_pil_images = st.session_state["test_pil_images"]
     heat_maps = st.session_state["heat_maps"]
+    test_image_path = st.session_state["test_image_path"]
     str_results = st.session_state["str_results"]
     str_threshold = st.session_state["str_threshold"]
 
@@ -334,18 +331,14 @@ def disp_session_images():
         st.header("検査結果")
         st.info(str_threshold)
         # Create a grid of images
-        cols = st.columns(3)
-        for image, heat_map, result in zip(
-            test_pil_images, heat_maps, str_results
+        for image, heat_map, image_path, result in zip(
+            test_pil_images, heat_maps, test_image_path, str_results
         ):
-            tile_0 = cols[0].container(height=200, border=False)
-            with tile_0:
-                st.image(image, width="stretch")
-            tile_1 = cols[1].container(height=200, border=False)
-            with tile_1:
-                st.image(heat_map, width="stretch")
-            tile_2 = cols[2].container(height=200, border=False)
-            with tile_2:
+            cols = st.columns(3)
+            cols[0].image(image, width="stretch")
+            cols[1].image(heat_map, width="stretch")
+            cols[2].write(image_path)
+            with cols[2]:
                 if "正常" in result:
                     st.success(result)
                 else:
@@ -601,9 +594,10 @@ def main_page(submitted: bool) -> None:
                 end = time.time()
                 elapsed_time = end - start
                 minutes = int(elapsed_time // 60)
-                seconds = int(elapsed_time % 60)
+                seconds = elapsed_time % 60
                 st.success(
-                    f"　処理完了　({minutes}minute, {seconds}seconds)", icon="✔️"
+                    f"　処理完了　({minutes}minutes, {seconds:.1f}seconds)",
+                    icon="✔️",
                 )
             except Exception as e:
                 print(e)
