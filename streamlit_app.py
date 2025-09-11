@@ -181,11 +181,7 @@ def disp_result_images(predictions, threshold) -> None:
     if predictions is None:
         return
 
-    st.session_state["test_pil_images"] = []
-    st.session_state["heat_maps"] = []
-    st.session_state["test_image_path"] = []
-    st.session_state["str_results"] = []
-    st.session_state["str_threshold"] = 0.0
+    init_results()
 
     map_min, map_max, map_ptp = get_map_min_max(predictions)
     with result_images_placeholder.container(height=300):
@@ -293,6 +289,17 @@ def disp_result_images(predictions, threshold) -> None:
             file_name="result.zip",
             on_click="ignore",
         )
+
+
+def init_results():
+    """
+    Initializes session state variables for storing test images, heat maps, image paths, result strings, and threshold value in a Streamlit application.
+    """
+    st.session_state["test_pil_images"] = []
+    st.session_state["heat_maps"] = []
+    st.session_state["test_image_path"] = []
+    st.session_state["str_results"] = []
+    st.session_state["str_threshold"] = 0.0
 
 
 def disp_session_images():
@@ -602,6 +609,7 @@ def main_page(submitted: bool) -> None:
             except Exception as e:
                 print(e)
                 st.error(f"Encountered an error: {e}", icon="❌")
+                init_results()
 
     elif "test_pil_images" in st.session_state and 0 < len(
         st.session_state["test_pil_images"]
