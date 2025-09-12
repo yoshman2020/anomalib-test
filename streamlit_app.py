@@ -544,6 +544,7 @@ def main_page(submitted: bool) -> None:
                     model_name=st.session_state["model_name"],
                     backbone=st.session_state["backbone"],
                     image_size=st.session_state["image_size"],
+                    max_epochs=st.session_state["epochs"],
                 )
 
                 # アップロードしたファイルをフォルダに保存

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
+from typing import Any
+
 import timm
+from anomalib.metrics import Evaluator
 from anomalib.models import (
     Cfa,
     Cflow,
@@ -28,16 +31,69 @@ from anomalib.models.image.reverse_distillation.anomaly_map import (
     AnomalyMapGenerationMode,
 )
 from anomalib.models.image.vlm_ad.utils import ModelName
+from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
+from anomalib.visualization import Visualizer
 from torchvision.transforms.v2 import Compose, Resize
 
 import constants
+
+
+class FreEx(Fre):
+    """
+    FreEx extends the Fre model with additional configuration for training epochs.
+    Args:
+        max_epochs (int): Maximum number of training epochs. Defaults to 220.
+    """
+
+    def __init__(
+        self,
+        backbone: str = "resnet50",
+        layer: str = "layer3",
+        pre_trained: bool = True,
+        pooling_kernel_size: int = 2,
+        input_dim: int = 65536,
+        latent_dim: int = 220,
+        pre_processor: PreProcessor | bool = True,
+        post_processor: PostProcessor | bool = True,
+        evaluator: Evaluator | bool = True,
+        visualizer: Visualizer | bool = True,
+        max_epochs: int = 220,
+    ) -> None:
+        super().__init__(
+            backbone,
+            layer,
+            pre_trained,
+            pooling_kernel_size,
+            input_dim,
+            latent_dim,
+            pre_processor,
+            post_processor,
+            evaluator,
+            visualizer,
+        )
+        self.max_epochs = max_epochs
+
+    @property
+    def trainer_arguments(self) -> dict[str, Any]:
+        """Return FRE-specific trainer arguments.
+
+        Returns:
+            dict[str, Any]: Dictionary of trainer arguments:
+                - ``gradient_clip_val``: ``0``
+                - ``max_epochs``: ``220``
+                - ``num_sanity_val_steps``: ``0``
+        """
+        super_trainer_arguments = super().trainer_arguments
+        super_trainer_arguments["max_epochs"] = self.max_epochs
+        return super_trainer_arguments
 
 
 def get_model(
     model_name: str,
     backbone: str,
     image_size: int = 256,
+    max_epochs: int = 1,
 ) -> AnomalibModule:
     """
     Creates and returns an anomaly detection model based on the specified model name and backbone.
@@ -181,7 +237,7 @@ def get_model(
         # max_epochs = 500
         # callbacks = [EarlyStopping(monitor="pixel_AUROC", mode="max")]
     elif model_name == "FRE":
-        model = Fre(
+        model = FreEx(
             backbone=backbone,
             layer=layers[-2],
             pre_processor=pre_processor,
@@ -190,6 +246,7 @@ def get_model(
             latent_dim=image_size,
             pre_trained=True,
             pooling_kernel_size=2,
+            max_epochs=max_epochs,
         )
         # max_epochs = 1220
     elif model_name == "GANomaly":
