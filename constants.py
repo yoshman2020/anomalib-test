@@ -134,7 +134,7 @@ MODEL_BACKBONES = {
     "DFM": BACKBONES,
     "DRAEM": [],
     "DSR": [],
-    "Efficient AD": BACKBONES,
+    "Efficient AD": [],
     "FastFlow": [
         "cait_m48_448",
         "deit_base_distilled_patch16_384",

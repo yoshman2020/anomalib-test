@@ -21,7 +21,7 @@ import constants
 import models
 
 st.set_page_config(
-    page_title="異常検知",
+    page_title="AI異常検知",
     page_icon=":control_knobs:",
     layout="wide",
 )
@@ -47,7 +47,7 @@ def configure_sidebar() -> bool:
         bool: True if the form is submitted ("検査開始" button pressed), otherwise False.
     """
     with st.sidebar:
-        st.markdown("# 異常検知")
+        st.markdown("# AI異常検知")
         st.markdown("## :level_slider: 検査条件")
 
         train_images = st.file_uploader(
@@ -184,6 +184,8 @@ def disp_result_images(predictions, threshold) -> None:
 
     init_results()
 
+    images = st.session_state["test_images"]
+
     map_min, map_max, map_ptp = get_map_min_max(predictions)
     with result_images_placeholder.container(height=300):
         st.header("検査結果")
@@ -211,27 +213,23 @@ def disp_result_images(predictions, threshold) -> None:
         # 画像とcsvファイルをzipに
         zip_path = Path(constants.RESULT_PATH) / "result.zip"
         with zipfile.ZipFile(zip_path, "w") as zipf:
-            for i, prediction in enumerate(predictions):
+            for prediction, image in zip(predictions, images):
                 cols = st.columns(3)
-                image = get_item(prediction, "image")
-                if isinstance(image, torch.Tensor):
-                    np_image = predict_to_image(image)
-                else:
-                    continue
-
-                pil_image = Image.fromarray(np_image)
-                wh_ratio = st.session_state["test_wh_ratios"][i]
-                resized_image = pil_image.resize(
-                    (pil_image.width, int(pil_image.width / wh_ratio))
-                )
-                cols[0].image(resized_image, caption="", width="stretch")
-                st.session_state["test_pil_images"].append(resized_image)
+                cols[0].image(image, caption="", width="stretch")
 
                 image_path = Path(prediction.image_path[0]).name
+
+                # 縦横比
+                pil_image = Image.open(image)
+                height_per_width = pil_image.height / pil_image.width
 
                 anomaly_map = get_item(prediction, "anomaly_map")
                 if anomaly_map is not None:
                     anomaly_map = anomaly_map.cpu().numpy().squeeze()  # type: ignore
+                    # anomaly_mapに合わせてリサイズ
+                    resized_image = pil_image.resize(anomaly_map.shape[:2])
+                    np_image = np.array(resized_image)
+                    # anomaly_mapを画像に重ねる
                     heat_map = superimpose_anomaly_map_g(
                         anomaly_map=anomaly_map,
                         image=np_image,
@@ -240,7 +238,10 @@ def disp_result_images(predictions, threshold) -> None:
                     )
                     pil_heat_map = Image.fromarray(heat_map)
                     resized_heat_map = pil_heat_map.resize(
-                        (pil_heat_map.width, int(pil_heat_map.width / wh_ratio))
+                        (
+                            pil_heat_map.width,
+                            int(pil_heat_map.width * height_per_width),
+                        )
                     )
                     cols[1].image(resized_heat_map, caption="", width="stretch")
                     st.session_state["heat_maps"].append(resized_heat_map)
@@ -321,7 +322,6 @@ def disp_session_images():
 
     Assumes the following keys exist in `st.session_state`:
         - "train_images": List of training images.
-        - "test_pil_images": List of test images (PIL format).
         - "heat_maps": List of heat map images.
         - "test_image_path": List of test image paths.
         - "str_results": List of result strings for each test image.
@@ -331,7 +331,7 @@ def disp_session_images():
     """
     disp_train_images(st.session_state["train_images"])
 
-    test_pil_images = st.session_state["test_pil_images"]
+    test_images = st.session_state["test_images"]
     heat_maps = st.session_state["heat_maps"]
     test_image_path = st.session_state["test_image_path"]
     str_results = st.session_state["str_results"]
@@ -342,7 +342,7 @@ def disp_session_images():
         st.info(str_threshold)
         # Create a grid of images
         for image, heat_map, image_path, result in zip(
-            test_pil_images, heat_maps, test_image_path, str_results
+            test_images, heat_maps, test_image_path, str_results
         ):
             cols = st.columns(3)
             cols[0].image(image, width="stretch")
@@ -392,17 +392,10 @@ def save_images(train_images, test_images):
     # 3. Save test_images to DATASET_PATH/test
     test_dir = dataset_path / "test"
     test_dir.mkdir(parents=True, exist_ok=True)
-    # 画像縦横比
-    st.session_state.test_wh_ratios = []
     for i, image in enumerate(test_images):
         image_name = "_".join(Path(image.name).parts)
         with open(test_dir / f"{i:04}.{image_name}", "wb") as f:
             f.write(image.getvalue())
-
-        pil_image = Image.open(image)
-        arr = np.array(pil_image)
-        h, w = arr.shape[:2]
-        st.session_state.test_wh_ratios.append(w / h)
 
 
 def get_item(prediction, key):
@@ -527,14 +520,14 @@ def main_page(submitted: bool) -> None:
                 st.session_state["train_images"] is None
                 or len(st.session_state["train_images"]) == 0
             ):
-                st.error("　学習画像を選択してください。", icon="❌")
+                st.error("学習画像を選択してください。", icon="❌")
                 init_results()
                 return
             if (
                 st.session_state["test_images"] is None
                 or len(st.session_state["test_images"]) == 0
             ):
-                st.error("　検査画像を選択してください。", icon="❌")
+                st.error("検査画像を選択してください。", icon="❌")
                 init_results()
                 return
             if (
@@ -542,7 +535,7 @@ def main_page(submitted: bool) -> None:
                 < len(constants.MODEL_BACKBONES[st.session_state["model_name"]])
                 and st.session_state["backbone"] is None
             ):
-                st.error("　モデルを選択してください。", icon="❌")
+                st.error("モデルを選択してください。", icon="❌")
                 init_results()
                 return
             try:
@@ -625,7 +618,7 @@ def main_page(submitted: bool) -> None:
                 minutes = int(elapsed_time // 60)
                 seconds = elapsed_time % 60
                 st.success(
-                    f"　処理完了　({minutes} minutes, {seconds:.1f} seconds)",
+                    f"処理完了 ({minutes} minutes, {seconds:.1f} seconds)",
                     icon="✔️",
                 )
                 print(f"elapsed_time: {elapsed_time}")
