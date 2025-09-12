@@ -267,12 +267,12 @@ def disp_result_images(predictions, threshold) -> None:
                 with cols[2]:
                     if pred_score <= threshold:
                         judge = "正常"
-                        st.success(f"score:{pred_score:.2f} [正常]")
+                        st.success(f"score:{pred_score:.5f} [正常]")
                     else:
                         judge = "異常"
-                        st.error(f"score:{pred_score:.2f} [異常]")
+                        st.error(f"score:{pred_score:.5f} [異常]")
                 st.session_state["str_results"].append(
-                    f"score:{pred_score:.2f} [{judge}]"
+                    f"score:{pred_score:.5f} [{judge}]"
                 )
 
                 # CSVにファイル名を追加
@@ -581,10 +581,12 @@ def main_page(submitted: bool) -> None:
                     accelerator="auto",
                     devices=1,
                 )
-                engine.fit(
-                    model=model,
-                    datamodule=datamodule,
-                )
+                try:
+                    engine.fit(model=model, datamodule=datamodule)
+                except Exception as e:
+                    print(e)
+                    # retry
+                    engine.fit(model=model, datamodule=datamodule)
 
                 # しきい値
                 if st.session_state["threshold_auto"]:
