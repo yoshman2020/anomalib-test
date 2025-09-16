@@ -11,9 +11,11 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import torch
+from anomalib.data.dataclasses.torch.image import ImageBatch
 from anomalib.data.datamodules import Folder
 from anomalib.data.utils import ValSplitMode
 from anomalib.engine.engine import Engine
+from lightning.pytorch.utilities.types import _PREDICT_OUTPUT
 from PIL import Image
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
@@ -51,7 +53,7 @@ def configure_sidebar() -> bool:
         st.markdown("## :level_slider: 検査条件")
 
         train_images = st.file_uploader(
-            "学習画像",
+            "正常画像",
             type=["png", "jpg", "jpeg", "bmp"],
             accept_multiple_files=True,
             key="train_images",
@@ -108,16 +110,49 @@ def configure_sidebar() -> bool:
                 about_backbone()
 
         threshold_auto = st.checkbox(
-            "自動しきい値", key="threshold_auto", value=True
+            "自動しきい値",
+            key="threshold_auto",
+            value=True,
+            help="正常画像をもとにしきい値を推定します。異常画像を選択した場合はしきい値は無視されます。",
         )
         threshold = st.number_input(
-            "しきい値", format="%0.5f", key="threshold", disabled=threshold_auto
+            "しきい値",
+            format="%0.5f",
+            key="threshold",
+            disabled=threshold_auto,
+            help="指定したしきい値で正常／異常を判断します。異常画像を選択した場合はしきい値は無視されます。",
         )
 
         image_size = st.number_input(
-            "縮小サイズ", value=128, min_value=2, key="image_size"
+            "縮小サイズ",
+            value=128,
+            min_value=2,
+            key="image_size",
+            help="学習前に画像を指定したサイズに縮小します。",
         )
-        epochs = st.number_input("学習回数", value=1, min_value=1, key="epochs")
+        epochs = st.number_input(
+            "学習回数",
+            value=1,
+            min_value=1,
+            key="epochs",
+            help="指定した回数学習します。",
+        )
+
+        abnormal_images = st.file_uploader(
+            "異常画像",
+            type=["png", "jpg", "jpeg", "bmp"],
+            accept_multiple_files=True,
+            key="abnormal_images",
+            help="異常画像がある場合はマスク画像とセットで選択してください。未選択でも検査できます。",
+        )
+
+        mask_images = st.file_uploader(
+            "マスク画像",
+            type=["png", "jpg", "jpeg", "bmp"],
+            accept_multiple_files=True,
+            key="mask_images",
+            help="マスク画像を異常画像とセットで選択してください。未選択でも検査できます。",
+        )
 
         submitted = st.button(
             "検査開始", type="primary", width="content", key="submitted"
@@ -134,7 +169,7 @@ def disp_train_images(images: list[UploadedFile]) -> None:
     """
     if images:
         with train_images_placeholder.container(height=300):
-            st.header("学習画像")
+            st.header("正常画像")
             # Create a grid of images
             cols = st.columns(3)
             for i, image in enumerate(images):
@@ -160,13 +195,16 @@ def predict_to_image(pred_image: torch.Tensor):
     )
 
 
-def disp_result_images(predictions, threshold) -> None:
+def disp_result_images(
+    predictions: list[ImageBatch] | None, threshold: float, has_abnormal: bool
+) -> None:
     """
     Displays the result images, anomaly maps, and prediction scores in a Streamlit app, and provides a downloadable ZIP file containing the results.
 
     Args:
-        predictions (list): A list of prediction objects, each containing image data, anomaly maps, prediction scores, and image paths.
+        predictions (list[ImageBatch]): A list of prediction objects, each containing image data, anomaly maps, prediction scores, and image paths.
         threshold (float): The threshold value used to determine if a prediction is normal or anomalous.
+        has_abnormal (bool): Indicates if any abnormal predictions exist.
 
     Functionality:
         - Displays original images, their corresponding anomaly heatmaps, and prediction results in a 3-column grid layout.
@@ -189,8 +227,11 @@ def disp_result_images(predictions, threshold) -> None:
     map_min, map_max, map_ptp = get_map_min_max(predictions)
     with result_images_placeholder.container(height=300):
         st.header("検査結果")
-        str_threshold = f"しきい値: {threshold:.5f}"
-        st.info(str_threshold)
+        if not has_abnormal:
+            str_threshold = f"しきい値: {threshold:.5f}"
+            st.info(str_threshold)
+        else:
+            str_threshold = ""
         st.session_state["str_threshold"] = str_threshold
 
         # CSV用のメモリバッファを用意
@@ -217,7 +258,11 @@ def disp_result_images(predictions, threshold) -> None:
                 cols = st.columns(3)
                 cols[0].image(image, caption="", width="stretch")
 
-                image_path = Path(prediction.image_path[0]).name
+                image_path = (
+                    Path(prediction.image_path[0]).name
+                    if prediction.image_path
+                    else "unknown"
+                )
 
                 # 縦横比
                 pil_image = Image.open(image)
@@ -263,18 +308,27 @@ def disp_result_images(predictions, threshold) -> None:
 
                 cols[2].write(image_path)
                 st.session_state["test_image_path"].append(image_path)
+
                 pred_score = get_item(prediction, "pred_score")
                 pred_score = pred_score if pred_score is not None else 0.0
+
+                if has_abnormal:
+                    # 異常画像がある場合はラベルを使用
+                    pred_label = get_item(prediction, "pred_label")
+                    judge = "正常" if pred_label else "異常"
+                elif pred_score <= threshold:
+                    judge = "正常"
+                else:
+                    judge = "異常"
+
+                str_results = f"score:{pred_score:.5f} [{judge}]"
+                st.session_state["str_results"].append(str_results)
+
                 with cols[2]:
-                    if pred_score <= threshold:
-                        judge = "正常"
-                        st.success(f"score:{pred_score:.5f} [正常]")
+                    if judge == "正常":
+                        st.success(str_results)
                     else:
-                        judge = "異常"
-                        st.error(f"score:{pred_score:.5f} [異常]")
-                st.session_state["str_results"].append(
-                    f"score:{pred_score:.5f} [{judge}]"
-                )
+                        st.error(str_results)
 
                 # CSVにファイル名を追加
                 csv_writer.writerow([image_path, pred_score, judge])
@@ -303,7 +357,7 @@ def init_results():
     st.session_state["heat_maps"] = []
     st.session_state["test_image_path"] = []
     st.session_state["str_results"] = []
-    st.session_state["str_threshold"] = 0.0
+    st.session_state["str_threshold"] = ""
 
 
 def disp_session_images():
@@ -339,7 +393,8 @@ def disp_session_images():
 
     with result_images_placeholder.container(height=300):
         st.header("検査結果")
-        st.info(str_threshold)
+        if str_threshold != "":
+            st.info(str_threshold)
         # Create a grid of images
         for image, heat_map, image_path, result in zip(
             test_images, heat_maps, test_image_path, str_results
@@ -365,12 +420,29 @@ def disp_session_images():
         )
 
 
-def save_images(train_images, test_images):
-    """Delete existing dataset and save images to train/test directories.
+def save_images(
+    train_images: list[UploadedFile],
+    test_images: list[UploadedFile],
+    abnormal_images: list[UploadedFile],
+    mask_images: list[UploadedFile],
+):
+    """
+    Saves uploaded images to designated dataset and result directories, organizing them based on the presence of abnormal images.
+
+    This function performs the following steps:
+    1. Deletes existing images in the dataset and result paths.
+    2. Determines if abnormal images are present in the session state.
+    3. Saves training images to the appropriate 'train' directory (either directly or under 'normal' subdirectory).
+    4. Saves test images to the appropriate 'test' directory (either directly or under 'normal' subdirectory), naming them with a zero-padded index and their original name.
 
     Args:
-        train_images: List of uploaded training images
-        test_images: List of uploaded test images
+        train_images (list[UploadedFile]): List of uploaded training images.
+        test_images (list[UploadedFile]): List of uploaded test images.
+        abnormal_images (list[UploadedFile]): List of uploaded abnormal images.
+        mask_images (list[UploadedFile]): List of uploaded mask images.
+
+    Note:
+        The function relies on global constants for dataset and result paths, and session state for abnormal image detection.
     """
 
     # 1. Delete DATASET_PATH images
@@ -381,20 +453,48 @@ def save_images(train_images, test_images):
     if result_path.exists():
         shutil.rmtree(result_path)
 
+    # 異常画像有り
+    has_abnormal = st.session_state["abnormal_images"] is not None and 0 < len(
+        st.session_state["abnormal_images"]
+    )
+
     # 2. Save train_images to DATASET_PATH/train
-    train_dir = dataset_path / "train"
-    train_dir.mkdir(parents=True, exist_ok=True)
-    for i, image in enumerate(train_images):
-        image_name = "_".join(Path(image.name).parts)
-        with open(train_dir / f"{i:04}.{image_name}", "wb") as f:
-            f.write(image.getvalue())
+    train_dir = (
+        dataset_path / "train"
+        if not has_abnormal
+        else dataset_path / "train" / "normal"
+    )
+    save_images_to_dir(train_images, train_dir)
 
     # 3. Save test_images to DATASET_PATH/test
     test_dir = dataset_path / "test"
-    test_dir.mkdir(parents=True, exist_ok=True)
-    for i, image in enumerate(test_images):
+    save_images_to_dir(test_images, test_dir)
+
+    if has_abnormal:
+        abnormal_dir = dataset_path / "train" / "abnormal"
+        save_images_to_dir(abnormal_images, abnormal_dir)
+        mask_dir = dataset_path / "train" / "mask"
+        save_images_to_dir(mask_images, mask_dir)
+
+
+def save_images_to_dir(images: list[UploadedFile], directory: Path):
+    """
+    Saves a list of image-like objects to the specified directory.
+
+    Each image is saved with a filename composed of its index and its original name,
+    with directory structure flattened and separated by underscores.
+
+    Args:
+        images (list[UploadedFile]): An iterable of image-like objects, each having a 'name' attribute and a 'getvalue()' method.
+        directory (Path): The target directory to save images. Created if it does not exist.
+
+    Raises:
+        OSError: If the image cannot be written to disk.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    for i, image in enumerate(images):
         image_name = "_".join(Path(image.name).parts)
-        with open(test_dir / f"{i:04}.{image_name}", "wb") as f:
+        with open(directory / f"{i:04}.{image_name}", "wb") as f:
             f.write(image.getvalue())
 
 
@@ -506,6 +606,45 @@ def superimpose_anomaly_map_g(
     return cv2.addWeighted(rgb_color_map, alpha, image, (1 - alpha), gamma)
 
 
+def is_input_ok(has_abnormal: bool) -> bool:
+    """
+    Checks if the required input images and model selections are present in the Streamlit session state.
+
+    Parameters:
+        has_abnormal (bool): Indicates if abnormal images are present (not used in this function).
+
+    Returns:
+        bool: True if all required inputs are provided; False otherwise. Displays error messages in the Streamlit UI if inputs are missing.
+    """
+
+    if (
+        st.session_state["train_images"] is None
+        or len(st.session_state["train_images"]) == 0
+    ):
+        st.error("正常画像を選択してください。", icon="❌")
+        return False
+    if (
+        st.session_state["test_images"] is None
+        or len(st.session_state["test_images"]) == 0
+    ):
+        st.error("検査画像を選択してください。", icon="❌")
+        return False
+    if (
+        0 < len(constants.MODEL_BACKBONES[st.session_state["model_name"]])
+        and st.session_state["backbone"] is None
+    ):
+        st.error("モデルを選択してください。", icon="❌")
+        return False
+    if has_abnormal and (
+        st.session_state["mask_images"] is None
+        or len(st.session_state["abnormal_images"])
+        != len(st.session_state["mask_images"])
+    ):
+        st.error("異常画像とマスク画像はセットで選択してください。", icon="❌")
+        return False
+    return True
+
+
 def main_page(submitted: bool) -> None:
     """Main page layout and logic for generating images.
 
@@ -516,28 +655,17 @@ def main_page(submitted: bool) -> None:
     if submitted == True:
         start = time.time()
         with st.spinner("処理中", show_time=True):
-            if (
-                st.session_state["train_images"] is None
-                or len(st.session_state["train_images"]) == 0
-            ):
-                st.error("学習画像を選択してください。", icon="❌")
+
+            # 異常画像有り
+            has_abnormal = st.session_state[
+                "abnormal_images"
+            ] is not None and 0 < len(st.session_state["abnormal_images"])
+
+            # 入力チェック
+            if not is_input_ok(has_abnormal):
                 init_results()
                 return
-            if (
-                st.session_state["test_images"] is None
-                or len(st.session_state["test_images"]) == 0
-            ):
-                st.error("検査画像を選択してください。", icon="❌")
-                init_results()
-                return
-            if (
-                0
-                < len(constants.MODEL_BACKBONES[st.session_state["model_name"]])
-                and st.session_state["backbone"] is None
-            ):
-                st.error("モデルを選択してください。", icon="❌")
-                init_results()
-                return
+
             try:
                 # Load the selected model
                 model = models.get_model(
@@ -551,21 +679,40 @@ def main_page(submitted: bool) -> None:
                 save_images(
                     st.session_state["train_images"],
                     st.session_state["test_images"],
+                    st.session_state["abnormal_images"],
+                    st.session_state["mask_images"],
                 )
 
-                datamodule = Folder(
-                    name="custom",
-                    root=constants.DATASET_PATH,
-                    normal_dir="train",
-                    normal_test_dir="test",
-                    val_split_mode=ValSplitMode.FROM_TRAIN,
-                    # 検証データを入れるとスコアが1か0になるため、検証はしない
-                    # ratioを0にするとデフォルト値で分割されるため、非常に小さい値を設定
-                    val_split_ratio=0.0001,
-                    train_batch_size=constants.BATCH_SIZE,
-                    eval_batch_size=constants.BATCH_SIZE,
-                    num_workers=1,
-                )
+                if has_abnormal:
+                    # 異常画像が選択されている場合
+                    datamodule = Folder(
+                        name="custom",
+                        root=constants.DATASET_PATH,
+                        normal_dir=Path("train") / "normal",
+                        abnormal_dir=Path("train") / "abnormal",
+                        normal_test_dir=Path("test"),
+                        mask_dir=Path("train") / "mask",
+                        val_split_mode=ValSplitMode.FROM_TRAIN,
+                        val_split_ratio=0.2,
+                        train_batch_size=constants.BATCH_SIZE,
+                        eval_batch_size=constants.BATCH_SIZE,
+                        num_workers=1,
+                    )
+                else:
+                    # 異常画像が選択されていない場合
+                    datamodule = Folder(
+                        name="custom",
+                        root=constants.DATASET_PATH,
+                        normal_dir="train",
+                        normal_test_dir="test",
+                        val_split_mode=ValSplitMode.FROM_TRAIN,
+                        # 検証データを入れるとスコアが1か0になるため、検証はしない
+                        # ratioを0にするとデフォルト値で分割されるため、非常に小さい値を設定
+                        val_split_ratio=0.0001,
+                        train_batch_size=constants.BATCH_SIZE,
+                        eval_batch_size=constants.BATCH_SIZE,
+                        num_workers=1,
+                    )
                 datamodule.setup()
 
                 # ----- 学習 -----
@@ -583,7 +730,7 @@ def main_page(submitted: bool) -> None:
                     engine.fit(model=model, datamodule=datamodule)
 
                 # しきい値
-                if st.session_state["threshold_auto"]:
+                if not has_abnormal and st.session_state["threshold_auto"]:
                     try:
                         # trainデータのスコア
                         train_predictions = engine.predict(
@@ -612,7 +759,7 @@ def main_page(submitted: bool) -> None:
 
                 # 結果描画
                 disp_train_images(st.session_state["train_images"])
-                disp_result_images(predictions, threshold=threshold)
+                disp_result_images(predictions, threshold=threshold, has_abnormal=has_abnormal)  # type: ignore
 
                 end = time.time()
                 elapsed_time = end - start
