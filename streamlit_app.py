@@ -723,11 +723,11 @@ def main_page(submitted: bool) -> None:
                     devices=1,
                 )
                 try:
-                    engine.fit(model=model, datamodule=datamodule)
+                    engine.train(model=model, datamodule=datamodule)
                 except Exception as e:
                     print(e)
                     # retry
-                    engine.fit(model=model, datamodule=datamodule)
+                    engine.train(model=model, datamodule=datamodule)
 
                 # しきい値
                 if not has_abnormal and st.session_state["threshold_auto"]:
