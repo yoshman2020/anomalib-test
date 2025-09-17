@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import torch
+from anomalib.data import Folder, FolderDataset
 from anomalib.data.dataclasses.torch.image import ImageBatch
-from anomalib.data.datamodules import Folder
 from anomalib.data.utils import ValSplitMode
 from anomalib.engine.engine import Engine
 from lightning.pytorch.utilities.types import _PREDICT_OUTPUT
@@ -113,14 +113,14 @@ def configure_sidebar() -> bool:
             "自動しきい値",
             key="threshold_auto",
             value=True,
-            help="正常画像をもとにしきい値を推定します。異常画像を選択した場合はしきい値は無視されます。",
+            help="正常画像をもとにしきい値を推定します。",
         )
         threshold = st.number_input(
             "しきい値",
             format="%0.5f",
             key="threshold",
             disabled=threshold_auto,
-            help="指定したしきい値で正常／異常を判断します。異常画像を選択した場合はしきい値は無視されます。",
+            help="指定したしきい値で正常／異常を判定します。",
         )
 
         image_size = st.number_input(
@@ -139,7 +139,7 @@ def configure_sidebar() -> bool:
         )
 
         abnormal_images = st.file_uploader(
-            "異常画像",
+            "異常画像　※未選択可",
             type=["png", "jpg", "jpeg", "bmp"],
             accept_multiple_files=True,
             key="abnormal_images",
@@ -147,7 +147,7 @@ def configure_sidebar() -> bool:
         )
 
         mask_images = st.file_uploader(
-            "マスク画像",
+            "マスク画像　※未選択可",
             type=["png", "jpg", "jpeg", "bmp"],
             accept_multiple_files=True,
             key="mask_images",
@@ -227,11 +227,8 @@ def disp_result_images(
     map_min, map_max, map_ptp = get_map_min_max(predictions)
     with result_images_placeholder.container(height=300):
         st.header("検査結果")
-        if not has_abnormal:
-            str_threshold = f"しきい値: {threshold:.5f}"
-            st.info(str_threshold)
-        else:
-            str_threshold = ""
+        str_threshold = f"しきい値: {threshold:.5f}"
+        st.info(str_threshold)
         st.session_state["str_threshold"] = str_threshold
 
         # CSV用のメモリバッファを用意
@@ -312,11 +309,7 @@ def disp_result_images(
                 pred_score = get_item(prediction, "pred_score")
                 pred_score = pred_score if pred_score is not None else 0.0
 
-                if has_abnormal:
-                    # 異常画像がある場合はラベルを使用
-                    pred_label = get_item(prediction, "pred_label")
-                    judge = "正常" if pred_label else "異常"
-                elif pred_score <= threshold:
+                if pred_score <= threshold:
                     judge = "正常"
                 else:
                     judge = "異常"
@@ -393,8 +386,7 @@ def disp_session_images():
 
     with result_images_placeholder.container(height=300):
         st.header("検査結果")
-        if str_threshold != "":
-            st.info(str_threshold)
+        st.info(str_threshold)
         # Create a grid of images
         for image, heat_map, image_path, result in zip(
             test_images, heat_maps, test_image_path, str_results
@@ -459,11 +451,7 @@ def save_images(
     )
 
     # 2. Save train_images to DATASET_PATH/train
-    train_dir = (
-        dataset_path / "train"
-        if not has_abnormal
-        else dataset_path / "train" / "normal"
-    )
+    train_dir = dataset_path / "train" / "normal"
     save_images_to_dir(train_images, train_dir)
 
     # 3. Save test_images to DATASET_PATH/test
@@ -688,22 +676,22 @@ def main_page(submitted: bool) -> None:
                     datamodule = Folder(
                         name="custom",
                         root=constants.DATASET_PATH,
+                        # abnormal_dirとnormal_test_dirのデータがvalになる
                         normal_dir=Path("train") / "normal",
                         abnormal_dir=Path("train") / "abnormal",
-                        normal_test_dir=Path("test"),
                         mask_dir=Path("train") / "mask",
-                        val_split_mode=ValSplitMode.FROM_TRAIN,
-                        val_split_ratio=0.2,
+                        normal_test_dir=Path("train") / "normal",
+                        val_split_mode=ValSplitMode.SAME_AS_TEST,
                         train_batch_size=constants.BATCH_SIZE,
                         eval_batch_size=constants.BATCH_SIZE,
-                        num_workers=1,
+                        num_workers=0,
                     )
                 else:
                     # 異常画像が選択されていない場合
                     datamodule = Folder(
                         name="custom",
                         root=constants.DATASET_PATH,
-                        normal_dir="train",
+                        normal_dir=Path("train") / "normal",
                         normal_test_dir="test",
                         val_split_mode=ValSplitMode.FROM_TRAIN,
                         # 検証データを入れるとスコアが1か0になるため、検証はしない
@@ -715,6 +703,14 @@ def main_page(submitted: bool) -> None:
                     )
                 datamodule.setup()
 
+                # テスト用
+                folder_dataset_test = FolderDataset(
+                    name="folder_dataset_test",
+                    normal_dir=Path(constants.DATASET_PATH) / "test",
+                    # splitをtrainにすることでラベルを「正常」としてnormal_dirのデータを読み込み
+                    split="train",
+                )
+
                 # ----- 学習 -----
                 engine = Engine(
                     # callbacks=callbacks,
@@ -722,15 +718,25 @@ def main_page(submitted: bool) -> None:
                     accelerator="auto",
                     devices=1,
                 )
-                try:
-                    engine.train(model=model, datamodule=datamodule)
-                except Exception as e:
-                    print(e)
-                    # retry
-                    engine.train(model=model, datamodule=datamodule)
+                if not has_abnormal:
+                    # 異常データが無い場合は学習のみで検証しない
+                    try:
+                        engine.train(model=model, datamodule=datamodule)
+                    except Exception as e:
+                        print(e)
+                        # retry
+                        engine.train(model=model, datamodule=datamodule)
+                else:
+                    # 異常データがある場合は検証も行う
+                    try:
+                        engine.fit(model=model, datamodule=datamodule)
+                    except Exception as e:
+                        print(e)
+                        # retry
+                        engine.fit(model=model, datamodule=datamodule)
 
                 # しきい値
-                if not has_abnormal and st.session_state["threshold_auto"]:
+                if st.session_state["threshold_auto"]:
                     try:
                         # trainデータのスコア
                         train_predictions = engine.predict(
@@ -755,7 +761,9 @@ def main_page(submitted: bool) -> None:
                     threshold = st.session_state["threshold"]
 
                 # 予想
-                predictions = engine.predict(model=model, datamodule=datamodule)
+                predictions = engine.predict(
+                    model=model, dataset=folder_dataset_test
+                )
 
                 # 結果描画
                 disp_train_images(st.session_state["train_images"])
