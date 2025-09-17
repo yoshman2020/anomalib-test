@@ -718,22 +718,13 @@ def main_page(submitted: bool) -> None:
                     accelerator="auto",
                     devices=1,
                 )
-                if not has_abnormal:
-                    # 異常データが無い場合は学習のみで検証しない
-                    try:
-                        engine.train(model=model, datamodule=datamodule)
-                    except Exception as e:
-                        print(e)
-                        # retry
-                        engine.train(model=model, datamodule=datamodule)
-                else:
-                    # 異常データがある場合は検証も行う
-                    try:
-                        engine.fit(model=model, datamodule=datamodule)
-                    except Exception as e:
-                        print(e)
-                        # retry
-                        engine.fit(model=model, datamodule=datamodule)
+
+                try:
+                    engine.fit(model=model, datamodule=datamodule)
+                except Exception as e:
+                    print(e)
+                    # retry
+                    engine.fit(model=model, datamodule=datamodule)
 
                 # しきい値
                 if st.session_state["threshold_auto"]:
