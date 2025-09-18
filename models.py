@@ -122,6 +122,9 @@ def get_model(
     transform = Compose([Resize((image_size, image_size))])
     pre_processor = PreProcessor(transform=transform)
 
+    post_processor = True
+    evaluator = True
+
     # Visualizerは使用しない
     visualizer = False
 
@@ -130,6 +133,8 @@ def get_model(
         model = Cfa(
             backbone=backbone,
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             gamma_c=1,
             gamma_d=1,
@@ -143,6 +148,8 @@ def get_model(
         model = Cflow(
             backbone=backbone,
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             layers=layers[-3:],
             fiber_batch_size=constants.BATCH_SIZE,
@@ -159,6 +166,8 @@ def get_model(
     elif model_name == "CS-Flow":
         model = Csflow(
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             cross_conv_hidden_channels=1024,
             n_coupling_blocks=4,
@@ -171,6 +180,8 @@ def get_model(
             backbone=backbone,
             layers=[layers[-1]],
             # pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             pre_trained=True,
             # n_pca_components=16,
@@ -185,6 +196,8 @@ def get_model(
             backbone=backbone,
             layer=layers[-2],
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             pre_trained=True,
             pooling_kernel_size=4,
@@ -195,6 +208,8 @@ def get_model(
     elif model_name == "DRAEM":
         model = Draem(
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             enable_sspcab=False,
             sspcab_lambda=0.1,
@@ -206,6 +221,8 @@ def get_model(
     elif model_name == "DSR":
         model = Dsr(
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             latent_anomaly_strength=0.2,
             upsampling_train_ratio=0.7,
@@ -214,6 +231,8 @@ def get_model(
     elif model_name == "Efficient AD":
         model = EfficientAd(
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             imagenet_dir="./datasets/imagenette",
             teacher_out_channels=384,
@@ -228,6 +247,8 @@ def get_model(
         model = Fastflow(
             backbone=backbone,
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             pre_trained=True,
             flow_steps=8,
@@ -241,6 +262,8 @@ def get_model(
             backbone=backbone,
             layer=layers[-2],
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             input_dim=image_size * image_size,
             latent_dim=image_size,
@@ -252,6 +275,8 @@ def get_model(
     elif model_name == "GANomaly":
         model = Ganomaly(
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             batch_size=32,
             n_features=64,
@@ -272,6 +297,8 @@ def get_model(
             backbone=backbone,
             layers=layers[-4:-1],
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             n_features=100,
             pre_trained=True,
@@ -282,6 +309,8 @@ def get_model(
             backbone=backbone,
             layers=layers[-3:-1],
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             pre_trained=True,
             coreset_sampling_ratio=0.1,
@@ -293,6 +322,8 @@ def get_model(
             backbone=backbone,
             layers=layers[-4:-1],
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             anomaly_map_mode=AnomalyMapGenerationMode.ADD,
             pre_trained=True,
@@ -304,6 +335,8 @@ def get_model(
             backbone=backbone,
             layers=layers[-4:-1],
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
         )
         # max_epochs = 100
@@ -313,6 +346,8 @@ def get_model(
             backbone=backbone,
             layers=layers[-3:-1],
             pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             perlin_threshold=0.2,
             supervised=False,
@@ -322,6 +357,8 @@ def get_model(
         model = Uflow(
             backbone=backbone,
             # pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             flow_steps=4,
             affine_clamp=2.0,
@@ -340,6 +377,8 @@ def get_model(
     elif model_name == "WinCLIP":
         model = WinClip(
             # pre_processor=pre_processor,
+            post_processor=post_processor,
+            evaluator=evaluator,
             visualizer=visualizer,
             class_name="transistor",
             k_shot=0,

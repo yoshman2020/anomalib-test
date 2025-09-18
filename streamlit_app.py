@@ -15,7 +15,7 @@ from anomalib.data import Folder, FolderDataset
 from anomalib.data.dataclasses.torch.image import ImageBatch
 from anomalib.data.utils import ValSplitMode
 from anomalib.engine.engine import Engine
-from anomalib.models import WinClip
+from anomalib.models import VlmAd, WinClip
 from lightning.pytorch.utilities.types import _PREDICT_OUTPUT
 from PIL import Image
 from streamlit.runtime.uploaded_file_manager import UploadedFile
@@ -753,8 +753,8 @@ def main_page(submitted: bool) -> None:
                     threshold = st.session_state["threshold"]
 
                 # 予想
-                if isinstance(model, WinClip):
-                    # WinClipはFolderDatasetに対応していないためFolderで再度読み込み
+                if isinstance(model, WinClip) or isinstance(model, VlmAd):
+                    # VLM-AD、WinClipはFolderDatasetに対応していないためFolderで再度読み込み
                     datamodule_test = Folder(
                         name="custom_test",
                         root=constants.DATASET_PATH,
